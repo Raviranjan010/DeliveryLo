@@ -55,6 +55,10 @@ class CheckoutController extends Notifier<CheckoutState> {
   CheckoutState build() => const CheckoutState();
 
   Future<CheckoutResult> placeOrder() async {
+    if (state.isPlacingOrder) {
+      return state.lastResult ??
+          const CheckoutFailure('An order is already being placed');
+    }
     state = const CheckoutState(isPlacingOrder: true);
     final result = await _placeOrder(retryOnTimeout: true);
     state = CheckoutState(lastResult: result);

@@ -277,7 +277,7 @@ class _PlaceOrderBar extends ConsumerWidget {
             minimumSize: const Size.fromHeight(52),
             backgroundColor: Colors.green.shade800,
           ),
-          onPressed: () => _placeOrder(context, ref),
+          onPressed: placing ? null : () => _placeOrder(context, ref),
           child: Row(
             children: [
               Text(formatMoney(totalPaise),
