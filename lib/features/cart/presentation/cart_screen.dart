@@ -258,6 +258,7 @@ class _PlaceOrderBar extends ConsumerWidget {
           builder: (_) => OrderSuccessScreen(order: order),
         ));
       case CheckoutNeedsReview(:final reconciliation):
+        if (!context.mounted) return;
         await showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,

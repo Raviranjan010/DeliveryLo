@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quickkart/core/providers.dart';
 import 'package:quickkart/features/app_config/domain/app_config.dart';
 import 'package:quickkart/features/cart/domain/cart.dart';
 import 'package:quickkart/features/cart/domain/cart_pricing.dart';
 import 'package:quickkart/features/catalog/presentation/catalog_controller.dart';
 import 'package:quickkart/features/checkout/data/order_api.dart';
 import 'package:quickkart/features/orders/data/order_tracking_repository.dart';
+import 'package:quickkart/features/checkout/domain/order.dart';
 
 import 'helpers/test_harness.dart';
 
@@ -102,31 +104,31 @@ void main() {
 
     test('catalog cache behavior remains preserved for static endpoints', () async {
       // 1. Fetch catalog products via ApiClient directly
-      final firstFetch = await h.api.get('/v1/products', query: {'category': 'fruits'})
+      final firstFetch = await h.read(apiClientProvider).get('/v1/products', query: {'category': 'fruits'})
           as Map<String, dynamic>;
       final initialBananaPrice = (firstFetch['items'] as List)
-          .firstWhere((p) => p['id'] == 'fruits-01')['pricePaise'];
+          .firstWhere((p) => p['id'] == 'fruits-01')['price'];
 
       // 2. Change price on server
-      h.server.setPrice('fruits-01', 99999);
+      h.server.setPrice('fruits-01', 99900);
 
       // 3. Fetch again without forceRefresh - should hit cache
-      final cachedFetch = await h.api.get('/v1/products', query: {'category': 'fruits'})
+      final cachedFetch = await h.read(apiClientProvider).get('/v1/products', query: {'category': 'fruits'})
           as Map<String, dynamic>;
       final cachedBananaPrice = (cachedFetch['items'] as List)
-          .firstWhere((p) => p['id'] == 'fruits-01')['pricePaise'];
+          .firstWhere((p) => p['id'] == 'fruits-01')['price'];
       expect(cachedBananaPrice, initialBananaPrice,
           reason: 'Catalog endpoints should continue to be cached by ApiClient');
 
       // 4. Fetch with forceRefresh: true - should bypass cache
-      final freshFetch = await h.api.get(
+      final freshFetch = await h.read(apiClientProvider).get(
         '/v1/products',
         query: {'category': 'fruits'},
         forceRefresh: true,
       ) as Map<String, dynamic>;
       final freshBananaPrice = (freshFetch['items'] as List)
-          .firstWhere((p) => p['id'] == 'fruits-01')['pricePaise'];
-      expect(freshBananaPrice, 99999,
+          .firstWhere((p) => p['id'] == 'fruits-01')['price'];
+      expect(freshBananaPrice, 999.0,
           reason: 'forceRefresh: true must bypass cache and get fresh data');
     });
   });

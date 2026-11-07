@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exceptions.dart';
+import '../../../core/providers.dart';
 import '../../app_config/presentation/app_config_controller.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../cart/application/cart_reconciler.dart';

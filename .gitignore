@@ -25,4 +25,15 @@ ios/Flutter/Flutter.podspec
 **/ios/Flutter/ephemeral/
 **/ios/Flutter/Generated.xcconfig
 
+# Generated platform folders and metadata
+android/
+ios/
+web/
+windows/
+macos/
+linux/
+.metadata
+pubspec.lock
+*.bundle
+
 .DS_Store

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quickkart/core/providers.dart';
+import 'package:quickkart/features/app_config/presentation/app_config_controller.dart';
 import 'package:quickkart/features/catalog/domain/product.dart';
 import 'package:quickkart/features/catalog/presentation/category_screen.dart';
 
@@ -16,7 +16,10 @@ void main() {
 
     testWidgets('reproduce BUG-8: CategoryScreen does not leak config listener after dispose', (tester) async {
       final category = const Category(id: 'fruits', name: 'Fruits & Veggies', emoji: '🥦');
-      final initialListeners = h.server.configListenerCount;
+
+      // Initialize the app-level config controller
+      h.container.read(appConfigControllerProvider);
+      final baselineListeners = h.server.configListenerCount;
 
       // Pump the CategoryScreen inside a provider scope
       await tester.pumpWidget(
@@ -40,7 +43,7 @@ void main() {
 
       // In the buggy code, CategoryScreen subscribed to remoteUpdates in initState
       // and never cancelled the subscription on dispose, leaking listeners!
-      expect(h.server.configListenerCount, initialListeners,
+      expect(h.server.configListenerCount, baselineListeners,
           reason: 'CategoryScreen must not leak config stream listeners when disposed');
     });
   });

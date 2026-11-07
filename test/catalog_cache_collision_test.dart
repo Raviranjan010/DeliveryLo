@@ -21,11 +21,13 @@ void main() {
       final bevPage = await repo.getPage(categoryId: 'beverages');
       expect(bevPage.items.first.categoryId, 'beverages');
 
-      // Go offline
+      // Simulate restart and offline
+      h = h.restart();
       h.server.chaos.offline = true;
 
       // Request fruits offline
-      final offlineFruits = await repo.getPage(categoryId: 'fruits');
+      final offlineRepo = h.read(catalogRepositoryProvider);
+      final offlineFruits = await offlineRepo.getPage(categoryId: 'fruits');
 
       // In the buggy code, offlineFruits has items from 'beverages' because
       // the cacheKey was just 'page.first' without categoryId!
