@@ -195,6 +195,34 @@ void main() {
       expect(result.requiresUserReview, isTrue);
     });
 
+    test('product with both price drift and zero stock emits only OutOfStock event', () async {
+      final banana = h.server.product('fruits-01');
+      final oldPrice = banana.pricePaise;
+      final newPrice = oldPrice + 500;
+      h.server.setPrice(banana.id, newPrice);
+      h.server.setStock(banana.id, 0);
+
+      final cart = Cart(lines: [
+        CartLine(
+          productId: banana.id,
+          name: banana.name,
+          emoji: '🍌',
+          unit: '6 pcs',
+          unitPricePaise: oldPrice,
+          quantity: 2,
+          maxPerOrder: banana.maxPerOrder,
+        ),
+      ]);
+
+      final result = await reconciler.reconcile(cart);
+      expect(result.cart.lines, isEmpty);
+      // Ensure contradictory PriceChanged is not emitted for unavailable product
+      expect(result.changes.length, 1);
+      expect(result.changes.first, isA<OutOfStock>());
+      expect((result.changes.first as OutOfStock).productId, banana.id);
+      expect(result.requiresUserReview, isTrue);
+    });
+
     test('network failure rethrows ApiException without returning partial cart', () async {
       h.server.chaos.offline = true;
 
