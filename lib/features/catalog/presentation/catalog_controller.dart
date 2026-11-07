@@ -141,3 +141,7 @@ class CatalogController extends FamilyNotifier<CatalogState, String> {
 final categoriesProvider = FutureProvider<List<Category>>(
   (ref) => ref.watch(catalogRepositoryProvider).getCategories(),
 );
+
+final dealsProvider = FutureProvider<CatalogPage>(
+  (ref) => ref.watch(catalogRepositoryProvider).getDeals(),
+);

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 /// What the app must do about its own version.
 enum UpdateRequirement {
   /// Nothing to do.
@@ -12,8 +14,6 @@ enum UpdateRequirement {
 }
 
 /// Decides whether the running app must / may be updated.
-///
-/// ## TODO(F2) - implement
 ///
 /// Contract (hidden tests check this exactly - see ASSIGNMENT.md, Feature 2):
 /// * Versions are dotted numbers like `1.4.0`, `1.10.2`, `2.0`. Compare them
@@ -33,6 +33,47 @@ class UpdatePolicy {
     required String minSupportedVersion,
     required String latestVersion,
   }) {
-    throw UnimplementedError('F2: implement UpdatePolicy.evaluate');
+    final current = _parseVersion(currentVersion);
+    final minSupported = _parseVersion(minSupportedVersion);
+    final latest = _parseVersion(latestVersion);
+
+    if (current == null || minSupported == null || latest == null) {
+      return UpdateRequirement.none;
+    }
+
+    if (_compare(current, minSupported) < 0) {
+      return UpdateRequirement.required;
+    }
+    if (_compare(current, latest) < 0) {
+      return UpdateRequirement.optional;
+    }
+    return UpdateRequirement.none;
+  }
+
+  static List<int>? _parseVersion(String v) {
+    final trimmed = v.trim();
+    if (trimmed.isEmpty) return null;
+
+    final parts = trimmed.split('.');
+    final segments = <int>[];
+    for (final part in parts) {
+      if (part.isEmpty) return null;
+      if (!RegExp(r'^\d+$').hasMatch(part)) return null;
+      final n = int.tryParse(part);
+      if (n == null || n < 0) return null;
+      segments.add(n);
+    }
+    return segments;
+  }
+
+  static int _compare(List<int> a, List<int> b) {
+    final length = max(a.length, b.length);
+    for (var i = 0; i < length; i++) {
+      final segA = i < a.length ? a[i] : 0;
+      final segB = i < b.length ? b[i] : 0;
+      if (segA < segB) return -1;
+      if (segA > segB) return 1;
+    }
+    return 0;
   }
 }

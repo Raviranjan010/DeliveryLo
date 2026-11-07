@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/config_repository.dart';
@@ -9,8 +11,23 @@ final appConfigControllerProvider =
     NotifierProvider<AppConfigController, AppConfig>(AppConfigController.new);
 
 class AppConfigController extends Notifier<AppConfig> {
+  StreamSubscription<int>? _subscription;
+
   @override
-  AppConfig build() => AppConfig.defaults();
+  AppConfig build() {
+    _subscription?.cancel();
+    final repo = ref.watch(configRepositoryProvider);
+    _subscription = repo.remoteUpdates.listen((_) {
+      refresh();
+    });
+
+    ref.onDispose(() {
+      _subscription?.cancel();
+      _subscription = null;
+    });
+
+    return AppConfig.defaults();
+  }
 
   /// Used at startup with the config loaded during bootstrap.
   void hydrate(AppConfig config) => state = config;
