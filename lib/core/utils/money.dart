@@ -11,4 +11,4 @@ String formatMoney(int paise) {
 }
 
 /// Converts a rupee amount coming from the (legacy) API into paise.
-int rupeesToPaise(num rupees) => (rupees * 100).toInt();
+int rupeesToPaise(num rupees) => (rupees * 100).round();
