@@ -12,5 +12,14 @@ void main() {
       expect(formatMoney(1999), '₹19.99');
       expect(formatMoney(4950), '₹49.50');
     });
+
+    test('reproduce Priority 5: formatMoney correctly formats negative paise values without losing negative sign', () {
+      expect(formatMoney(-50), '-₹0.50');
+      expect(formatMoney(-100), '-₹1');
+      expect(formatMoney(-199), '-₹1.99');
+      expect(formatMoney(0), '₹0');
+      expect(formatMoney(50), '₹0.50');
+      expect(formatMoney(199), '₹1.99');
+    });
   });
 }
