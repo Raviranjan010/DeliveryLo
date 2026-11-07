@@ -11,6 +11,7 @@ import '../application/cart_controller.dart';
 import '../data/coupon_api.dart';
 import '../domain/cart.dart';
 import '../domain/cart_pricing.dart';
+import '../domain/reconciliation.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
@@ -256,10 +257,12 @@ class _PlaceOrderBar extends ConsumerWidget {
         navigator.pushReplacement(MaterialPageRoute<void>(
           builder: (_) => OrderSuccessScreen(order: order),
         ));
-      case CheckoutNeedsReview():
-        messenger.showSnackBar(const SnackBar(
-          content: Text('Your cart was updated. Please review it.'),
-        ));
+      case CheckoutNeedsReview(:final reconciliation):
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          builder: (ctx) => _ReconciliationReviewSheet(reconciliation: reconciliation),
+        );
       case CheckoutFailure(:final message):
         messenger.showSnackBar(SnackBar(content: Text(message)));
     }
@@ -298,5 +301,107 @@ class _PlaceOrderBar extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _ReconciliationReviewSheet extends StatelessWidget {
+  const _ReconciliationReviewSheet({required this.reconciliation});
+
+  final ReconciliationResult reconciliation;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.amber),
+                const SizedBox(width: 8),
+                Text(
+                  'Cart Changes Require Review',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Prices or availability changed on the server. Please review the updates before ordering:',
+              style: TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: reconciliation.changes.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final change = reconciliation.changes[i];
+                  return _buildChangeTile(change);
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: Colors.green.shade800,
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Review Updated Cart'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChangeTile(CartChange change) {
+    switch (change) {
+      case PriceChanged(:final productId, :final oldPricePaise, :final newPricePaise, :final isIncrease):
+        return ListTile(
+          dense: true,
+          leading: Icon(
+            isIncrease ? Icons.trending_up : Icons.trending_down,
+            color: isIncrease ? Colors.red : Colors.green,
+          ),
+          title: Text(isIncrease ? 'Price increased' : 'Price decreased'),
+          subtitle: Text('$productId: ${formatMoney(oldPricePaise)} → ${formatMoney(newPricePaise)}'),
+        );
+      case OutOfStock(:final productId):
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.remove_shopping_cart, color: Colors.red),
+          title: const Text('Out of stock'),
+          subtitle: Text('$productId has sold out and was removed from your cart.'),
+        );
+      case QuantityReduced(:final productId, :final requestedQuantity, :final availableQuantity):
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.production_quantity_limits, color: Colors.orange),
+          title: const Text('Quantity reduced'),
+          subtitle: Text('$productId quantity adjusted: $requestedQuantity → $availableQuantity'),
+        );
+      case ProductUnavailable(:final productId):
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.block, color: Colors.red),
+          title: const Text('Item no longer available'),
+          subtitle: Text('$productId is no longer sold and was removed.'),
+        );
+      case CouponRemoved(:final code, :final reason):
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.money_off, color: Colors.red),
+          title: Text('Coupon $code removed'),
+          subtitle: Text(reason == 'EXPIRED' ? 'The coupon has expired.' : 'The coupon is no longer valid.'),
+        );
+    }
   }
 }
