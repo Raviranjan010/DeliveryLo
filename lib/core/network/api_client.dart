@@ -72,7 +72,9 @@ class ApiClient {
     TransportRequest request, {
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh) {
+    // Mutable order endpoints are never read from cache
+    final isCacheable = !request.path.startsWith('/v1/orders');
+    if (!forceRefresh && isCacheable) {
       final cached = _responseCache[request.cacheKey];
       if (cached != null &&
           _clock().difference(cached.storedAt) < responseCacheTtl) {
@@ -112,7 +114,8 @@ class ApiClient {
     final decoded = _decode(response.body);
 
     if (response.isSuccess) {
-      if (request.method == 'GET') {
+      // Do not cache mutable order endpoints
+      if (request.method == 'GET' && !request.path.startsWith('/v1/orders')) {
         _responseCache[request.cacheKey] =
             _CachedResponse(response.body, _clock());
       }
