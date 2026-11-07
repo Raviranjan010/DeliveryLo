@@ -25,24 +25,42 @@ final searchControllerProvider =
 );
 
 class ProductSearchController extends Notifier<SearchState> {
+  int _searchSequence = 0;
+
   @override
   SearchState build() => const SearchState();
 
   /// Called on every keystroke of the search field.
   Future<void> search(String query) async {
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      _searchSequence++;
       state = const SearchState();
       return;
     }
+    if (trimmed.length < 2) {
+      _searchSequence++;
+      state = SearchState(query: query, results: const [], isLoading: false);
+      return;
+    }
+
+    final seq = ++_searchSequence;
     state = SearchState(query: query, results: state.results, isLoading: true);
     try {
       final results =
-          await ref.read(catalogRepositoryProvider).search(query.trim());
-      state = SearchState(query: query, results: results);
+          await ref.read(catalogRepositoryProvider).search(trimmed);
+      if (seq == _searchSequence) {
+        state = SearchState(query: query, results: results);
+      }
     } on ApiException catch (e) {
-      state = SearchState(query: query, errorMessage: e.message);
+      if (seq == _searchSequence) {
+        state = SearchState(query: query, errorMessage: e.message);
+      }
     }
   }
 
-  void clear() => state = const SearchState();
+  void clear() {
+    _searchSequence++;
+    state = const SearchState();
+  }
 }
