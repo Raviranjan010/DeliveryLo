@@ -78,5 +78,34 @@ void main() {
       expect(h.server.configListenerCount, 0,
           reason: 'Disposing container must cancel stream subscription without leak');
     });
+
+    test('reproduce Priority 4: bare ProviderContainer self-hydrates seeded configuration without main.dart bootstrap', () async {
+      // Seed custom config on the server BEFORE reading the container
+      h.server.publishConfig({
+        'store_open': false,
+        'store_closed_message': 'Nightly maintenance in progress',
+        'free_delivery_threshold_paise': 49900,
+      });
+
+      // Create a fresh bare harness sharing the same seeded server
+      final bareHarness = TestHarness(server: h.server);
+      try {
+        // Initial synchronous read returns defaults
+        final initial = bareHarness.container.read(appConfigControllerProvider);
+        expect(initial.storeOpen, isTrue);
+
+        // Allow microtask asynchronous self-hydration to complete
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // State must now be self-hydrated with seeded configuration
+        final hydrated = bareHarness.container.read(appConfigControllerProvider);
+        expect(hydrated.storeOpen, isFalse,
+            reason: 'Bare container must asynchronously hydrate from server/storage without manual hydrate() call');
+        expect(hydrated.storeClosedMessage, 'Nightly maintenance in progress');
+        expect(hydrated.freeDeliveryThresholdPaise, 49900);
+      } finally {
+        bareHarness.dispose();
+      }
+    });
   });
 }
