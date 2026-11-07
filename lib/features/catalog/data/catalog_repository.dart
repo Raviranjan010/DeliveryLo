@@ -42,6 +42,7 @@ class CatalogRepository {
     required String categoryId,
     String? cursor,
     int limit = 10,
+    bool forceRefresh = false,
   }) async {
     final cacheKey = 'page.${cursor ?? 'first'}';
     try {
@@ -49,6 +50,7 @@ class CatalogRepository {
         categoryId: categoryId == kAllProductsCategory ? null : categoryId,
         cursor: cursor,
         limit: limit,
+        forceRefresh: forceRefresh,
       );
       await _cache.write(cacheKey, page);
       return page;

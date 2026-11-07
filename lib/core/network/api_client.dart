@@ -28,18 +28,33 @@ class ApiClient {
 
   final Map<String, _CachedResponse> _responseCache = {};
 
-  Future<dynamic> get(String path, {Map<String, String> query = const {}}) {
+  Future<dynamic> get(
+    String path, {
+    Map<String, String> query = const {},
+    bool forceRefresh = false,
+  }) {
     return _getWithRetry(
       TransportRequest(method: 'GET', path: path, query: query),
+      forceRefresh: forceRefresh,
     );
+  }
+
+  /// Invalidates cached GET responses matching [pathPrefix], or all cached
+  /// responses if [pathPrefix] is null.
+  void invalidateCache([String? pathPrefix]) {
+    if (pathPrefix == null) {
+      _responseCache.clear();
+    } else {
+      _responseCache.removeWhere((key, _) => key.contains(pathPrefix));
+    }
   }
 
   Future<dynamic> post(
     String path, {
     Object? body,
     Map<String, String> headers = const {},
-  }) {
-    return _send(
+  }) async {
+    final result = await _send(
       TransportRequest(
         method: 'POST',
         path: path,
@@ -47,13 +62,24 @@ class ApiClient {
         body: body == null ? null : jsonEncode(body),
       ),
     );
+    if (path.startsWith('/v1/orders')) {
+      invalidateCache('/v1/orders');
+    }
+    return result;
   }
 
-  Future<dynamic> _getWithRetry(TransportRequest request) async {
-    final cached = _responseCache[request.cacheKey];
-    if (cached != null &&
-        _clock().difference(cached.storedAt) < responseCacheTtl) {
-      return jsonDecode(cached.body);
+  Future<dynamic> _getWithRetry(
+    TransportRequest request, {
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh) {
+      final cached = _responseCache[request.cacheKey];
+      if (cached != null &&
+          _clock().difference(cached.storedAt) < responseCacheTtl) {
+        return jsonDecode(cached.body);
+      }
+    } else {
+      _responseCache.remove(request.cacheKey);
     }
 
     ApiException? lastError;

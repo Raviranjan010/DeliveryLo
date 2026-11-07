@@ -5,6 +5,7 @@ import '../../app_config/presentation/app_config_controller.dart';
 import '../../cart/application/cart_controller.dart';
 import '../../cart/domain/cart_pricing.dart';
 import '../../cart/domain/reconciliation.dart';
+import '../../orders/data/order_tracking_repository.dart';
 import '../data/order_api.dart';
 import '../domain/order.dart';
 
@@ -71,6 +72,7 @@ class CheckoutController extends Notifier<CheckoutState> {
     try {
       final order = await ref.read(orderApiProvider).placeOrder(cart, pricing);
       await ref.read(cartControllerProvider.notifier).clear();
+      ref.invalidate(ordersProvider);
       return CheckoutSuccess(order);
     } on ApiTimeoutException {
       // Slow networks are common; give it one more go before bothering

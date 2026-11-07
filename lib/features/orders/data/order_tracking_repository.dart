@@ -28,7 +28,8 @@ class OrderTrackingRepository {
       watchOrderDocument;
   final Stream<Map<String, dynamic>> Function() pushMessages;
 
-  Future<List<Order>> getOrders() => orderApi.getOrders();
+  Future<List<Order>> getOrders({bool forceRefresh = false}) =>
+      orderApi.getOrders(forceRefresh: forceRefresh);
 
   /// ## TODO(F3, optional) - implement
   ///
@@ -39,5 +40,5 @@ class OrderTrackingRepository {
 }
 
 final ordersProvider = FutureProvider<List<Order>>(
-  (ref) => ref.watch(orderTrackingRepositoryProvider).getOrders(),
+  (ref) => ref.watch(orderTrackingRepositoryProvider).getOrders(forceRefresh: true),
 );
