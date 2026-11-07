@@ -77,6 +77,13 @@ class CartReconciler {
 
         final serverProduct = productMap[line.productId]!;
 
+        // Availability and stock limit checks (check before price drift so
+        // out-of-stock items do not generate contradictory PriceChanged events)
+        if (serverProduct.stock <= 0) {
+          changes.add(OutOfStock(productId: line.productId));
+          continue; // Omitted from reconciled cart
+        }
+
         // Price drift check
         if (line.unitPricePaise != serverProduct.pricePaise) {
           changes.add(PriceChanged(
@@ -84,12 +91,6 @@ class CartReconciler {
             oldPricePaise: line.unitPricePaise,
             newPricePaise: serverProduct.pricePaise,
           ));
-        }
-
-        // Availability and stock limit checks
-        if (serverProduct.stock <= 0) {
-          changes.add(OutOfStock(productId: line.productId));
-          continue; // Omitted from reconciled cart
         }
 
         final availableLimit = min(serverProduct.stock, serverProduct.maxPerOrder);
