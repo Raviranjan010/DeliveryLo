@@ -12,9 +12,13 @@ final appConfigControllerProvider =
 
 class AppConfigController extends Notifier<AppConfig> {
   StreamSubscription<int>? _subscription;
+  bool _disposed = false;
+  bool _hydrated = false;
 
   @override
   AppConfig build() {
+    _disposed = false;
+    _hydrated = false;
     _subscription?.cancel();
     final repo = ref.watch(configRepositoryProvider);
     _subscription = repo.remoteUpdates.listen((_) {
@@ -22,17 +26,34 @@ class AppConfigController extends Notifier<AppConfig> {
     });
 
     ref.onDispose(() {
+      _disposed = true;
       _subscription?.cancel();
       _subscription = null;
+    });
+
+    // Asynchronously self-hydrate so bare ProviderContainer instances
+    // receive current server/storage configuration without depending
+    // exclusively on main.dart bootstrap.
+    Future.microtask(() {
+      if (!_disposed && !_hydrated) {
+        refresh();
+      }
     });
 
     return AppConfig.defaults();
   }
 
   /// Used at startup with the config loaded during bootstrap.
-  void hydrate(AppConfig config) => state = config;
+  void hydrate(AppConfig config) {
+    _hydrated = true;
+    state = config;
+  }
 
   Future<void> refresh() async {
-    state = await ref.read(configRepositoryProvider).load();
+    final loaded = await ref.read(configRepositoryProvider).load();
+    if (!_disposed) {
+      _hydrated = true;
+      state = loaded;
+    }
   }
 }
