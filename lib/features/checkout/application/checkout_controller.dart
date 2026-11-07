@@ -98,6 +98,22 @@ class CheckoutController extends Notifier<CheckoutState> {
   Future<CheckoutResult> _executeOrderFlow({required bool retryOnTimeout}) async {
     var cart = ref.read(cartControllerProvider);
 
+    // If this is a retry of the same in-flight logical order, bypass pre-checkout
+    // reconciliation and submit directly using the existing idempotency key.
+    // If the server already created the order on the first attempt, the server
+    // has already decremented inventory. Running reconcile() would see stock: 0,
+    // falsely report OutOfStock, and lose the order.
+    if (_idempotencyKey != null && _logicalOrderCart == cart) {
+      final pricing =
+          CartPricing.compute(cart, ref.read(appConfigControllerProvider));
+      return _sendOrderWithRetry(
+        cart: cart,
+        pricing: pricing,
+        idempotencyKey: _idempotencyKey!,
+        retryOnTimeout: retryOnTimeout,
+      );
+    }
+
     // 3. Pre-checkout reconciliation: reconcile cart against current server state
     try {
       final recon = await ref.read(cartReconcilerProvider).reconcile(cart);
@@ -120,11 +136,9 @@ class CheckoutController extends Notifier<CheckoutState> {
       return CheckoutFailure(e.message, canRetry: e.isTransient);
     }
 
-    // 4. Maintain idempotency key per logical order payload
-    if (_idempotencyKey == null || _logicalOrderCart != cart) {
-      _idempotencyKey = _uuid.v4();
-      _logicalOrderCart = cart;
-    }
+    // 4. Generate idempotency key for this new logical order payload
+    _idempotencyKey = _uuid.v4();
+    _logicalOrderCart = cart;
 
     final pricing =
         CartPricing.compute(cart, ref.read(appConfigControllerProvider));
