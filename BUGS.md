@@ -147,6 +147,80 @@
 
 ---
 
+## BUG-11: Manual checkout retry after lost response resetting idempotency key during pre-reconciliation (Priority 1)
+
+- **Symptom:** When a customer orders the last remaining unit of an item (stock = 1) and network timeout drops the response after the server successfully created the order, tapping "Place order" to retry fails with an "Out of stock" error and resets the idempotency key, leaving the successfully created order unrecognized by the client.
+- **Steps to reproduce:**
+  1. Set stock of an item to 1 unit.
+  2. Order 1 unit. Enable `chaos.loseNextOrderResponses = 1`.
+  3. The client request succeeds on the mock server (reducing stock to 0 and storing the order under the `Idempotency-Key`), but the response packet is dropped.
+  4. Automatic retry fails or exhausts.
+  5. The customer manually taps "Place order" to retry.
+  6. The client unconditionally re-ran `_reconciler.reconcile()`. The catalog reported `stock: 0`, flagging the item as `OutOfStock`, removing it from the cart, and resetting `_idempotencyKey = null`.
+- **Root cause:** In `lib/features/checkout/application/checkout_controller.dart`, `placeOrder()` unconditionally executed pre-checkout reconciliation even when retrying an identical logical order with an existing, unresolved idempotency key. Since the server had already processed the first request and decremented inventory, reconciliation saw stock as 0 and aborted recovery.
+- **Fix:** In `CheckoutController.placeOrder()`, checked whether an unresolved `_idempotencyKey != null` exists for the identical cart payload (`_logicalOrderCart == cart`). If so, we bypass pre-checkout reconciliation and immediately dispatch the order request with the existing key and payload directly to `_orderApi.placeOrder()`. The mock server's idempotency resolver intercepts the key and returns the created order (`200 OK`) before evaluating inventory. If the cart has changed, a new idempotency key is generated and reconciliation runs normally.
+- **Test:** `test/idempotent_manual_retry_test.dart` → `reproduce Priority 1: manual retry after lost response reuses key and recovers created order`
+- **Commits:** test `fdd4ece` → fix `45d0579`
+
+---
+
+## BUG-12: Reconciliation event ordering emitting contradictory PriceChanged for out-of-stock items (Priority 2)
+
+- **Symptom:** When a product in the cart undergoes both a price change and becomes out of stock, reconciliation emits two conflicting events: `PriceChanged` followed by `OutOfStock`.
+- **Steps to reproduce:**
+  1. Add a product (e.g. Banana) to the cart at ₹50.
+  2. Increase server price to ₹55 and set server stock to 0.
+  3. Reconcile the cart via `CartReconciler.reconcile()`.
+  4. The result contains both `PriceChanged` and `OutOfStock` for the same item.
+- **Root cause:** In `lib/features/cart/application/cart_reconciler.dart`, the price check was performed before the availability and stock check (`serverProduct.stock <= 0`). Since an unavailable item cannot be purchased at any price, reporting a price change on an unpurchasable item is contradictory and violates the rule that unavailable products have one final actionable change per cart line.
+- **Fix:** Moved the availability and stock check (`serverProduct.stock <= 0`) before the price drift check, immediately adding `OutOfStock` and continuing to the next cart line.
+- **Test:** `test/cart_reconciler_test.dart` → `product with both price drift and zero stock emits only OutOfStock event`
+- **Commits:** test `aea5f0e` → fix `5b46477`
+
+---
+
+## BUG-13: `ApiClient` caching mutable `GET /v1/orders` responses hiding external status updates (Priority 3)
+
+- **Symptom:** Order status changes occurring externally on the server (e.g. status advancing from `placed` to `confirmed` to `out_for_delivery` or `delivered`) are not reflected when calling `OrderApi.getOrder(id)` or `getOrders()` because `ApiClient` returns a stale cached response.
+- **Steps to reproduce:**
+  1. Place an order and fetch it using `OrderApi.getOrder(id)`. Status is `OrderStatus.placed`.
+  2. Server advances the order status externally via `MockServer.advanceOrder(id)`.
+  3. Call `OrderApi.getOrder(id)` again without `forceRefresh: true`.
+  4. The returned order still displays `OrderStatus.placed`.
+- **Root cause:** In `lib/core/network/api_client.dart`, `ApiClient` cached all successful `GET` responses in `_responseCache` for 10 minutes. While QK-102 invalidated `/v1/orders` on client `POST` requests, external status advances do not generate a client `POST`, leaving subsequent `GET /v1/orders/*` requests trapped in the 10-minute cache.
+- **Fix:** Excluded mutable order endpoints (`request.path.startsWith('/v1/orders')`) from `_responseCache` storage and retrieval in `ApiClient._send` and `_getWithRetry`.
+- **Test:** `test/stale_cache_test.dart` → `reproduce Priority 3: order status change on server must reflect on subsequent getOrder without forceRefresh`
+- **Commits:** test `98020cb` → fix `733b4f8`
+
+---
+
+## BUG-14: Bare `ProviderContainer` startup unable to self-hydrate server-seeded configuration without `main.dart` bootstrap (Priority 4)
+
+- **Symptom:** In test environments or isolated component harnesses that instantiate a bare `ProviderContainer`, reading `appConfigControllerProvider` returns default values (`AppConfig.defaults()`) even when custom configuration is seeded on the server or in persistent storage, unless a stream update is later pushed.
+- **Steps to reproduce:**
+  1. Seed custom configuration on the mock server (e.g. `store_open: false`).
+  2. Create a bare `ProviderContainer` and read `appConfigControllerProvider`.
+  3. `state` remains at `AppConfig.defaults()` (`storeOpen == true`) because `main.dart` bootstrap logic was not executed.
+- **Root cause:** In `lib/features/app_config/presentation/app_config_controller.dart`, `AppConfigController.build()` synchronously returned `AppConfig.defaults()`, relying exclusively on explicit calls to `hydrate()` in `main.dart` for initial load.
+- **Fix:** Added asynchronous self-hydration via `Future.microtask` in `AppConfigController.build()`. Added a `_hydrated` guard flag so that if `hydrate()` is called explicitly by `main.dart`, redundant network refreshes are avoided, while bare test containers automatically hydrate without manual bootstrapping.
+- **Test:** `test/app_config_test.dart` → `reproduce Priority 4: bare ProviderContainer self-hydrates seeded configuration without main.dart bootstrap`
+- **Commits:** test `14a6174` → fix `992ac25`
+
+---
+
+## BUG-15: `formatMoney` dropping negative sign for sub-rupee fractional paise amounts (Priority 5)
+
+- **Symptom:** Negative fractional paise amounts (such as `-50` paise) format as `'₹0.50'` instead of `'-₹0.50'`, completely losing the negative sign.
+- **Steps to reproduce:**
+  1. Call `formatMoney(-50)`.
+  2. The function returns `'₹0.50'`.
+- **Root cause:** In `lib/core/utils/money.dart`, `formatMoney` computed `final rupees = paise ~/ 100;`. For `-50` paise, integer division evaluates to `0`. The negative sign was lost and the positive prefix `'₹'` was prepended without a minus sign. Furthermore, for values like `-100`, it produced `'₹-1'` instead of `'-₹1'`.
+- **Fix:** Detected `isNegative = paise < 0` up front, took `abs()` for rupee and remainder calculation, and prepended `'-₹'` when negative (`isNegative ? '-₹' : '₹'`).
+- **Test:** `test/format_money_test.dart` → `reproduce Priority 5: formatMoney correctly formats negative paise values without losing negative sign`
+- **Commits:** test `2fc99e1` → fix `0a99880`
+
+---
+
 ## Suspicious but NOT a bug
 
 - **`MockServer._maybeDriftPrice()` random price drift during catalog listing:**

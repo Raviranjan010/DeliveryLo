@@ -14,6 +14,8 @@ Tools used: Antigravity Agent (DeepMind Advanced Agentic Coding), Claude 3.5 Son
 | 6 | Formulate contract-compliant `CartReconciler.reconcile` implementation handling batching and coupons. | Implemented batch chunking (max 50), stock/maxPerOrder clamping, discontinued product exclusion, and coupon validation. |
 | 7 | Design offline remote configuration caching and leak-free live updates in Riverpod 2. | Implemented `ConfigRepository.load()` with offline persistent storage and `AppConfigController` with proper subscription cancellation in `onDispose`. |
 | 8 | Implement segment-by-segment numeric version comparator for `UpdatePolicy.evaluate`. | Built robust parser that handles missing trailing segments, numeric segments, and safely returns `none` on malformed inputs. |
+| 9 | Investigate lost response manual retry lifecycle when server inventory decrements on first attempt. | Identified that pre-reconciliation on manual retry sees 0 stock and resets the key. Formulated recovery bypass for unresolved key with identical payload. |
+| 10 | Analyze bare ProviderContainer lifecycle in Riverpod 2 Notifier to guarantee hydration without manual main.dart bootstrap. | Implemented asynchronous self-hydration via `Future.microtask` guarded by `_hydrated` flag to avoid duplicate fetches during bootstrap. |
 
 ## When the AI was wrong or misleading (at least 3)
 
@@ -40,6 +42,12 @@ Tools used: Antigravity Agent (DeepMind Advanced Agentic Coding), Claude 3.5 Son
 - **Why it was wrong:** Directly violates `docs/BUSINESS_RULES.md § 5`: *"Customers only pay amounts they have agreed to... a higher price... must be shown to the customer, who confirms before ordering."*
 - **How I noticed:** Checked `BUSINESS_RULES.md` and the `PriceChanged` domain model (`bool get requiresUserReview => isIncrease;`).
 - **What I did instead:** Strictly enforced that every price increase, stock reduction, or coupon invalidation requires explicit user review and confirmation via `_ReconciliationReviewSheet` and `CheckoutNeedsReview`.
+
+### 5. Running pre-checkout reconciliation on manual retry after lost response
+- **What it suggested:** Suggested running `CartReconciler.reconcile()` unconditionally before every checkout attempt, including manual retries after timeouts.
+- **Why it was wrong:** If the first checkout attempt succeeded on the backend but the response was lost on a flaky network, the backend had already created the order and decremented inventory (e.g. from 1 unit down to 0). Running pre-reconciliation on retry queries `/v1/products/batch`, detects 0 stock, classifies the line as `OutOfStock`, removes it from the cart, and destroys `_idempotencyKey`! This destroys recovery identity and fails an order that was actually placed.
+- **How I noticed:** Traced the idempotency contract in `MockServer._handleOrdersPost()`, where existing keys are resolved before checking inventory. Pre-reconciliation prevented the server from ever receiving the retry with the existing key.
+- **What I did instead:** Preserved `_idempotencyKey` and `_logicalOrderCart` across retries. When retrying the identical cart, pre-reconciliation is bypassed so the existing key and payload are directly submitted to `OrderApi.placeOrder()`, recovering the created order (`200 OK`).
 
 ## What I would NOT trust an AI with in this codebase, and why
 
